@@ -8,6 +8,8 @@ use std::net::{TcpListener, TcpStream};
 
 use polling::{Event, Events, Poller};
 
+use clap::Parser;
+
 enum EventSource {
     Listener(TcpListener),
     Stream(TcpStream),
@@ -48,9 +50,9 @@ impl EventLoop {
         let socket = TcpListener::bind(addr)?;
         socket.set_nonblocking(true)?;
         let key = self.get_key();
+        unsafe{ self.poller.add(&socket, Event::all(key))?};
         self.fds
-            .insert(key, EventSource::Listener(socket.try_clone()?));
-        unsafe { self.poller.add(&socket, Event::readable(key))? };
+            .insert(key, EventSource::Listener(socket));
         Ok(())
     }
 
@@ -70,6 +72,7 @@ impl EventLoop {
             println!("poll results: {}", events.len());
 
             for ev in events.iter() {
+                println!("event: {}", ev.key);
                 if let Err(msg) = self.process_event(&ev) {
                     println!("io error: {}, ignored", msg);
                 }
@@ -118,11 +121,38 @@ impl EventLoop {
     }
 }
 
+#[derive(Parser)]
+struct Command {
+    #[clap(short, long, default_value = "8999")]
+    port: u16,
+}
+
+impl Command {
+    fn new() -> Command {
+        Command::parse()
+    }
+}
+
 fn main() -> io::Result<()> {
     println!("=== start ===");
     let mut ev = EventLoop::new()?;
-    ev.listen("127.0.0.1:8999")?;
+    let args = Command::new();
+    println!("port: {}", args.port);
+    ev.listen(&format!("127.0.0.1:{}", args.port))?;
     ev.run();
     println!("=== end ===");
     Ok(())
 }
+
+// test basic polling usage
+// fn main() -> io::Result<()> {
+//     println!("=== start ===");
+//     let poller = Poller::new().unwrap();
+//     let mut events = Events::new();
+//     let socket = TcpListener::bind("127.0.0.1:8999").unwrap();
+//     socket.set_nonblocking(true).unwrap();
+//     unsafe { poller.add(&socket, Event::all(1)).unwrap()};
+//     poller.wait(&mut events, None).unwrap();
+//     println!("=== end ===");
+//     Ok(())
+// }
